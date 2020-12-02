@@ -3,7 +3,9 @@ package httpcache
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
