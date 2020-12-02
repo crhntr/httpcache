@@ -75,16 +75,22 @@ func (cache *HTTPCache) Load(reader io.Reader) error {
 	return gob.NewDecoder(reader).Decode(cache)
 }
 
-func (cache *HTTPCache) SaveToFile(fp string) error {
+func (cache *HTTPCache) SaveToFile(fp string) (retErr error) {
 	f, err := os.Create(fp)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if retErr != nil {
+			_ = f.Close()
+			return
+		}
+		retErr = f.Close()
+	}()
 	return cache.Save(f)
 }
 
-func (cache *HTTPCache) LoadFromFile(fp string) error {
+func (cache *HTTPCache) LoadFromFile(fp string) (retErr error) {
 	f, err := os.Open(fp)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -92,13 +98,20 @@ func (cache *HTTPCache) LoadFromFile(fp string) error {
 		}
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if retErr != nil {
+			_ = f.Close()
+			return
+		}
+		retErr = f.Close()
+	}()
 	return cache.Load(f)
 }
 
 type Request struct {
-	Method string
-	URL    string
+	Method 		string
+	URL    		string
+	HeadersHash string
 }
 
 type Record struct{
@@ -126,7 +139,10 @@ func (cache *HTTPCache) RoundTrip(httpRequest *http.Request) (*http.Response, er
 		cache.Transport = http.DefaultTransport
 	}
 
-	key := Request{URL: httpRequest.URL.String(), Method: httpRequest.Method}
+	sum := sha256.New()
+	_ = httpRequest.Header.Write(sum)
+
+	key := Request{URL: httpRequest.URL.String(), Method: httpRequest.Method, HeadersHash: fmt.Sprintf("%x", sum.Sum(nil))}
 	if value, found := cache.Cache.Load(key); found && (cache.TTL == 0 || time.Since(value.(Record).Timestamp) < cache.TTL) {
 		return value.(Record).GetResponse()
 	}
